@@ -23,8 +23,15 @@ ${src}
 
 const bm = 'javascript:' + encodeURIComponent(code);
 const size = `${Math.round(bm.length / 1000)} KB`;
-const html = readFileSync('index.html', 'utf8')
-  .replace(/const code = .*;/, () => `const code = ${JSON.stringify(bm)};`)
-  .replace(/(<span id="size">)[^<]*/, (_, tag) => tag + size);
+// Patterns tolerate formatters (line breaks, missing semicolons); the encoded code never contains a raw quote.
+const markers = [
+  [/const code =\s*"[^"]*";?/, () => `const code = ${JSON.stringify(bm)};`],
+  [/(<span id="size">)[^<]*/, (_, tag) => tag + size],
+];
+let html = readFileSync('index.html', 'utf8');
+for (const [re, fn] of markers) {
+  if (!re.test(html)) throw new Error(`index.html: marker ${re} not found`);
+  html = html.replace(re, fn);
+}
 writeFileSync('index.html', html);
 console.log(`bookmarklet: ${bm.length} chars (${size})${live ? ` (live: ${live})` : ''}`);

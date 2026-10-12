@@ -10,7 +10,9 @@
     if (text != null) e.textContent = text;
     return e;
   };
-  const C = { log: '#ddd', info: '#8cf', warn: '#fc6', error: '#f66', debug: '#999' };
+  // GitHub dark palette: G for surfaces, C for text by log level.
+  const G = { canvas: '#010409', bg: '#0d1117', surface: '#151b23', active: '#212830', line: '#3d444d', fg: '#e6edf3', muted: '#9198a1', blue: '#4493f8', tab: '#f78166' };
+  const C = { log: G.fg, info: G.blue, warn: '#d29922', error: '#f85149', debug: G.muted };
   const clip = (s, n = 5000) => (s.length > n ? s.slice(0, n) + '…' : s);
   const fmt = v => {
     if (typeof v === 'string') return v;
@@ -32,12 +34,12 @@
   const host = h('div', 'all:initial');
   const root = host.attachShadow({ mode: 'closed' });
   for (const ev of ['keydown', 'keyup', 'keypress']) host.addEventListener(ev, e => e.stopPropagation());
-  const panel = h('div', 'position:fixed;left:0;right:0;bottom:0;height:50vh;z-index:2147483647;display:flex;flex-direction:column;background:#1e1e1e;color:#ddd;font:12px/1.4 ui-monospace,Menlo,monospace;border-top:1px solid #555');
-  const hl = h('div', 'position:fixed;pointer-events:none;z-index:2147483646;background:rgba(80,140,255,.25);outline:1px solid #58f;display:none');
-  const bar = h('div', 'display:flex;flex:none;overflow-x:auto;border-bottom:1px solid #444');
+  const panel = h('div', `position:fixed;left:0;right:0;bottom:0;height:50vh;z-index:2147483647;display:flex;flex-direction:column;background:${G.bg};color:${G.fg};font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;border-top:1px solid ${G.line}`);
+  const hl = h('div', `position:fixed;pointer-events:none;z-index:2147483646;background:rgba(68,147,248,.2);outline:1px solid ${G.blue};display:none`);
+  const bar = h('div', `display:flex;flex:none;overflow-x:auto;border-bottom:1px solid ${G.line}`);
   // Drag handle: pointer events cover touch and mouse; touch-action:none stops the page scrolling mid-drag.
-  const grip = h('div', 'flex:none;height:18px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;background:#252525');
-  grip.append(h('div', 'width:36px;height:4px;border-radius:2px;background:#666'));
+  const grip = h('div', `flex:none;height:18px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;background:${G.surface}`);
+  grip.append(h('div', `width:36px;height:4px;border-radius:2px;background:${G.line}`));
   grip.onpointerdown = e => {
     grip.setPointerCapture(e.pointerId);
     grip.onpointermove = e => { panel.style.height = Math.min(Math.max(innerHeight - e.clientY, 60), innerHeight - 20) + 'px'; };
@@ -47,19 +49,19 @@
   root.append(hl, panel);
 
   const btn = (label, onclick, parent = bar) => {
-    const b = h('button', 'background:#333;color:#ddd;border:0;border-right:1px solid #444;padding:8px 12px;font:inherit;flex:none', label);
+    const b = h('button', `background:${G.surface};color:${G.fg};border:0;border-right:1px solid ${G.line};padding:8px 12px;font:inherit;flex:none`, label);
     b.onclick = onclick;
     parent.append(b);
     return b;
   };
   const row = (parent, text, color = C.log) => {
     if (parent.childElementCount >= 500) parent.firstChild.remove(); // cap long sessions
-    const r = h('div', 'padding:3px 6px;border-bottom:1px solid #2c2c2c;white-space:pre-wrap;word-break:break-all;color:' + color, clip(text));
+    const r = h('div', `padding:3px 6px;border-bottom:1px solid ${G.surface};white-space:pre-wrap;word-break:break-all;color:${color}`, clip(text));
     parent.append(r);
     return r;
   };
   const field = (placeholder, css) => {
-    const f = h('input', 'flex:none;background:#111;color:#fff;border:0;padding:8px;font:inherit;font-size:16px;outline:none;' + css);
+    const f = h('input', `flex:none;background:${G.canvas};color:${G.fg};border:0;padding:8px;font:inherit;font-size:16px;outline:none;${css}`);
     f.placeholder = placeholder;
     f.setAttribute('autocapitalize', 'off');
     f.autocomplete = 'off';
@@ -77,7 +79,8 @@
   const show = name => {
     for (const k in tabs) {
       tabs[k].body.style.display = k === name ? 'flex' : 'none';
-      tabs[k].b.style.background = k === name ? '#555' : '#333';
+      tabs[k].b.style.background = k === name ? G.active : G.surface;
+      tabs[k].b.style.boxShadow = k === name ? `inset 0 -2px ${G.tab}` : 'none';
     }
     tabs[name].onShow?.();
   };
@@ -85,7 +88,7 @@
   // --- console ---
   const con = tab('Console');
   const logs = h('div', 'flex:1;min-height:0;overflow:auto');
-  const inp = field('> expression', 'border-top:1px solid #444');
+  const inp = field('> expression', `border-top:1px solid ${G.line}`);
   con.append(logs, inp);
   const log = (text, color) => { row(logs, text, color); logs.scrollTop = logs.scrollHeight; };
 
@@ -119,9 +122,9 @@
 
   // --- elements ---
   const els = tab('Elements');
-  const tools = h('div', 'position:sticky;top:0;display:flex;flex-wrap:wrap;background:#1e1e1e;border-bottom:1px solid #444');
+  const tools = h('div', `position:sticky;top:0;display:flex;flex-wrap:wrap;background:${G.bg};border-bottom:1px solid ${G.line}`);
   const info = h('div');
-  const css = field('add css, e.g. color:red', 'border-bottom:1px solid #444');
+  const css = field('add css, e.g. color:red', `border-bottom:1px solid ${G.line}`);
   css.onkeydown = e => {
     if (e.key === 'Enter' && cur) { cur.style.cssText += ';' + css.value; css.value = ''; select(cur); }
   };
@@ -153,8 +156,8 @@
     for (const a of el.attributes) row(info, `${a.name}="${a.value}"`, C.warn);
     const cs = getComputedStyle(el);
     row(info, ['display', 'position', 'box-sizing', 'width', 'height', 'margin', 'padding', 'border', 'color', 'background-color', 'font', 'z-index', 'overflow', 'opacity']
-      .map(p => `${p}: ${cs.getPropertyValue(p)}`).join('\n'), '#bbb');
-    row(info, el.outerHTML, '#888');
+      .map(p => `${p}: ${cs.getPropertyValue(p)}`).join('\n'), '#c9d1d9');
+    row(info, el.outerHTML, G.muted);
   };
   addEventListener('click', e => {
     if (!picking || e.target === host) return;
