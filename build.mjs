@@ -22,7 +22,7 @@ ${src}
   : src;
 
 const bm = 'javascript:' + encodeURIComponent(code);
-const size = `${Math.round(bm.length / 1000)} KB`;
+const size = `${Math.round(bm.length / 1000)}\u00a0KB`; // non-breaking space keeps "18 KB" on one line
 // Patterns tolerate formatters (line breaks, missing semicolons); the encoded code never contains a raw quote.
 const markers = [
   [/const code =\s*"[^"]*";?/, () => `const code = ${JSON.stringify(bm)};`],
