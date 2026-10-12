@@ -3,32 +3,96 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Unhooded</title>
 <style>
-  body { font: 16px/1.5 system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 16px; }
-  textarea { width: 100%; height: 120px; font: 12px monospace; box-sizing: border-box; }
-  button { font-size: 16px; padding: 8px 16px; }
+  :root { --bg: #fff; --fg: #111; --muted: #666; --card: #f3f3f5; --line: #ddd; --accent: #2563eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111; --fg: #eee; --muted: #999; --card: #1d1d20; --line: #333; --accent: #60a5fa; }
+  }
+  * { box-sizing: border-box; }
+  body { font: 16px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--fg); max-width: 560px; margin: 0 auto; padding: 24px 16px 60vh; }
+  h1 { margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 32px 0 8px; }
+  p { margin: 0 0 12px; color: var(--muted); }
+  ol { padding-left: 22px; margin: 0; }
+  li { margin: 8px 0; }
+  button { font: inherit; cursor: pointer; border-radius: 12px; }
+  .big { display: block; width: 100%; padding: 14px; border: 0; background: #2563eb; color: #fff; font-weight: 600; margin: 8px 0; }
+  .big.ok { background: #15803d; }
+  .ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); padding: 10px 14px; }
+  textarea { width: 100%; height: 100px; font: 12px monospace; }
+  .browsers { display: flex; gap: 8px; margin: 8px 0 16px; }
+  .browsers button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px; background: var(--card); color: var(--fg); border: 2px solid transparent; }
+  .browsers button[aria-pressed="true"] { border-color: var(--accent); }
+  .logo { width: 40px; height: 40px; }
+  .card { background: var(--card); border-radius: 12px; padding: 12px 16px; }
+  [hidden] { display: none !important; }
 </style>
 
 <h1>Unhooded</h1>
-<p>Desktop: drag this to your bookmarks bar → <a id="bm">Unhooded</a></p>
+<p>Desktop-style inspector for your phone's browser: console, elements, network and storage.</p>
+<button class="ghost" id="try">Try it on this page</button>
 
-<p>Mobile:</p>
+<h2>Instructions</h2>
 <ol>
   <li>Bookmark this page.</li>
-  <li>Copy the code below.</li>
-  <li>Edit the bookmark and replace its URL with the code.</li>
-  <li>Chrome: on any site, type "Unhooded" in the address bar and tap the bookmark.</li>
-  <li>Safari: open it from the Bookmarks menu (book icon). Typing it in the address bar won't work.</li>
+  <li><button class="big" id="copy">Tap here to copy the code</button>
+    <textarea id="code" readonly hidden></textarea></li>
+  <li>Edit the bookmark you just made, delete its address and paste the code in its place.</li>
 </ol>
-<p>Safari on Mac: enable Settings → Advanced → "Show features for web developers", then Develop → Developer Settings → "Allow JavaScript from Smart Search Field".</p>
-<textarea id="code" readonly></textarea>
-<button id="copy">Copy</button>
+
+<h2>Opening it</h2>
+<div class="browsers">
+  <button data-b="safari">
+    <img class="logo" src="https://cdn.jsdelivr.net/gh/alrra/browser-logos@75.0.1/src/safari-ios/safari-ios_128x128.png" alt="">
+    Safari
+  </button>
+  <button data-b="chrome"><img class="logo" src="https://cdn.jsdelivr.net/gh/alrra/browser-logos@75.0.1/src/chrome/chrome_128x128.png" alt="">Chrome (Android)</button>
+</div>
+<div class="card" data-for="safari">
+  <ol>
+    <li>Go to the site you want to inspect.</li>
+    <li>Tap the Bookmarks button (book icon) and tap <b>Unhooded</b>.</li>
+  </ol>
+  <p>Don't type the name in the address bar. Safari blocks bookmarks opened that way.</p>
+</div>
+<div class="card" data-for="chrome">
+  <ol>
+    <li>Go to the site you want to inspect.</li>
+    <li>Tap the address bar, type <b>Unhooded</b> and tap the bookmark in the suggestions.</li>
+  </ol>
+</div>
 
 <script>
   const code = "javascript:%2F%2F%20Unhooded%3A%20tiny%20mobile%20devtools.%20Built%20to%20survive%20strict%20CSP%20%2F%20Trusted%20Types%3A%0A%2F%2F%20no%20external%20loads%2C%20no%20innerHTML%2C%20styles%20only%20via%20CSSOM%20(el.style)%2C%20and%0A%2F%2F%20console%20eval%20falls%20back%20to%20plain%20property%20paths%20when%20the%20page%20blocks%20eval.%0A(()%20%3D%3E%20%7B%0A%20%20if%20(window.__unhooded)%20return%20window.__unhooded.toggle()%3B%0A%0A%20%20const%20h%20%3D%20(tag%2C%20css%2C%20text)%20%3D%3E%20%7B%0A%20%20%20%20const%20e%20%3D%20document.createElement(tag)%3B%0A%20%20%20%20if%20(css)%20e.style.cssText%20%3D%20css%3B%0A%20%20%20%20if%20(text%20!%3D%20null)%20e.textContent%20%3D%20text%3B%0A%20%20%20%20return%20e%3B%0A%20%20%7D%3B%0A%20%20const%20clip%20%3D%20(s%2C%20n%20%3D%205000)%20%3D%3E%20(s.length%20%3E%20n%20%3F%20s.slice(0%2C%20n)%20%2B%20'%E2%80%A6'%20%3A%20s)%3B%0A%20%20const%20fmt%20%3D%20v%20%3D%3E%20%7B%0A%20%20%20%20if%20(typeof%20v%20%3D%3D%3D%20'string')%20return%20v%3B%0A%20%20%20%20if%20(v%20instanceof%20Error)%20return%20v.stack%20%26%26%20v.stack.includes(v.message)%20%3F%20v.stack%20%3A%20v%20%2B%20'%5Cn'%20%2B%20(v.stack%20%7C%7C%20'')%3B%0A%20%20%20%20if%20(v%20instanceof%20Element)%20%7B%0A%20%20%20%20%20%20const%20cls%20%3D%20typeof%20v.className%20%3D%3D%3D%20'string'%20%26%26%20v.className.trim()%3B%0A%20%20%20%20%20%20return%20'%3C'%20%2B%20v.localName%20%2B%20(v.id%20%3F%20'%23'%20%2B%20v.id%20%3A%20'')%20%2B%20(cls%20%3F%20'.'%20%2B%20cls.split(%2F%5Cs%2B%2F).join('.')%20%3A%20'')%20%2B%20'%3E'%3B%0A%20%20%20%20%7D%0A%20%20%20%20if%20(typeof%20v%20%3D%3D%3D%20'function')%20return%20'%C6%92%20'%20%2B%20v.name%20%2B%20'()'%3B%0A%20%20%20%20if%20(v%20instanceof%20Map%20%7C%7C%20v%20instanceof%20Set)%20return%20v.constructor.name%20%2B%20'%20'%20%2B%20fmt(%5B...v%5D)%3B%0A%20%20%20%20if%20(v%20%26%26%20typeof%20v%20%3D%3D%3D%20'object')%20%7B%0A%20%20%20%20%20%20try%20%7B%20return%20JSON.stringify(v%2C%20null%2C%202)%20%3F%3F%20String(v)%3B%20%7D%0A%20%20%20%20%20%20catch%20%7B%20return%20Object.prototype.toString.call(v)%20%2B%20'%20%7B%20'%20%2B%20Object.keys(v).slice(0%2C%2030).join('%2C%20')%20%2B%20'%20%7D'%3B%20%7D%0A%20%20%20%20%7D%0A%20%20%20%20return%20String(v)%3B%0A%20%20%7D%3B%0A%0A%20%20%2F%2F%20---%20shell%20---%0A%20%20const%20host%20%3D%20h('div'%2C%20'all%3Ainitial')%3B%0A%20%20const%20root%20%3D%20host.attachShadow(%7B%20mode%3A%20'closed'%20%7D)%3B%0A%20%20for%20(const%20ev%20of%20%5B'keydown'%2C%20'keyup'%2C%20'keypress'%5D)%20host.addEventListener(ev%2C%20e%20%3D%3E%20e.stopPropagation())%3B%0A%20%20const%20panel%20%3D%20h('div'%2C%20'position%3Afixed%3Bleft%3A0%3Bright%3A0%3Bbottom%3A0%3Bheight%3A50vh%3Bz-index%3A2147483647%3Bdisplay%3Aflex%3Bflex-direction%3Acolumn%3Bbackground%3A%231e1e1e%3Bcolor%3A%23ddd%3Bfont%3A12px%2F1.4%20ui-monospace%2CMenlo%2Cmonospace%3Bborder-top%3A1px%20solid%20%23555')%3B%0A%20%20const%20hl%20%3D%20h('div'%2C%20'position%3Afixed%3Bpointer-events%3Anone%3Bz-index%3A2147483646%3Bbackground%3Argba(80%2C140%2C255%2C.25)%3Boutline%3A1px%20solid%20%2358f%3Bdisplay%3Anone')%3B%0A%20%20const%20bar%20%3D%20h('div'%2C%20'display%3Aflex%3Bflex%3Anone%3Boverflow-x%3Aauto%3Bborder-bottom%3A1px%20solid%20%23444')%3B%0A%20%20panel.append(bar)%3B%0A%20%20root.append(hl%2C%20panel)%3B%0A%0A%20%20const%20btn%20%3D%20(label%2C%20onclick%2C%20parent%20%3D%20bar)%20%3D%3E%20%7B%0A%20%20%20%20const%20b%20%3D%20h('button'%2C%20'background%3A%23333%3Bcolor%3A%23ddd%3Bborder%3A0%3Bborder-right%3A1px%20solid%20%23444%3Bpadding%3A8px%2012px%3Bfont%3Ainherit%3Bflex%3Anone'%2C%20label)%3B%0A%20%20%20%20b.onclick%20%3D%20onclick%3B%0A%20%20%20%20parent.append(b)%3B%0A%20%20%20%20return%20b%3B%0A%20%20%7D%3B%0A%20%20const%20row%20%3D%20(parent%2C%20text%2C%20color%20%3D%20'%23ddd')%20%3D%3E%20%7B%0A%20%20%20%20const%20r%20%3D%20h('div'%2C%20'padding%3A3px%206px%3Bborder-bottom%3A1px%20solid%20%232c2c2c%3Bwhite-space%3Apre-wrap%3Bword-break%3Abreak-all%3Bcolor%3A'%20%2B%20color%2C%20clip(text))%3B%0A%20%20%20%20parent.append(r)%3B%0A%20%20%20%20return%20r%3B%0A%20%20%7D%3B%0A%20%20const%20tabs%20%3D%20%7B%7D%3B%0A%20%20const%20tab%20%3D%20(name%2C%20display%20%3D%20'block'%2C%20onShow)%20%3D%3E%20%7B%0A%20%20%20%20const%20body%20%3D%20h('div'%2C%20'flex%3A1%3Bmin-height%3A0%3Boverflow%3Aauto%3Bflex-direction%3Acolumn%3Bdisplay%3Anone')%3B%0A%20%20%20%20panel.append(body)%3B%0A%20%20%20%20tabs%5Bname%5D%20%3D%20%7B%20body%2C%20display%2C%20onShow%2C%20b%3A%20btn(name%2C%20()%20%3D%3E%20show(name))%20%7D%3B%0A%20%20%20%20return%20body%3B%0A%20%20%7D%3B%0A%20%20const%20show%20%3D%20name%20%3D%3E%20%7B%0A%20%20%20%20for%20(const%20k%20in%20tabs)%20%7B%0A%20%20%20%20%20%20tabs%5Bk%5D.body.style.display%20%3D%20k%20%3D%3D%3D%20name%20%3F%20tabs%5Bk%5D.display%20%3A%20'none'%3B%0A%20%20%20%20%20%20tabs%5Bk%5D.b.style.background%20%3D%20k%20%3D%3D%3D%20name%20%3F%20'%23555'%20%3A%20'%23333'%3B%0A%20%20%20%20%7D%0A%20%20%20%20tabs%5Bname%5D.onShow%3F.()%3B%0A%20%20%7D%3B%0A%0A%20%20%2F%2F%20---%20console%20---%0A%20%20const%20con%20%3D%20tab('Console'%2C%20'flex')%3B%0A%20%20const%20logs%20%3D%20h('div'%2C%20'flex%3A1%3Bmin-height%3A0%3Boverflow%3Aauto')%3B%0A%20%20const%20inp%20%3D%20h('input'%2C%20'flex%3Anone%3Bbackground%3A%23111%3Bcolor%3A%23fff%3Bborder%3A0%3Bborder-top%3A1px%20solid%20%23444%3Bpadding%3A8px%3Bfont%3A16px%20ui-monospace%2CMenlo%2Cmonospace%3Boutline%3Anone')%3B%0A%20%20inp.placeholder%20%3D%20'%3E%20expression'%3B%0A%20%20inp.setAttribute('autocapitalize'%2C%20'off')%3B%0A%20%20inp.autocomplete%20%3D%20'off'%3B%0A%20%20inp.spellcheck%20%3D%20false%3B%0A%20%20inp.enterKeyHint%20%3D%20'go'%3B%0A%20%20con.append(logs%2C%20inp)%3B%0A%20%20const%20log%20%3D%20(text%2C%20color)%20%3D%3E%20%7B%20row(logs%2C%20text%2C%20color)%3B%20logs.scrollTop%20%3D%20logs.scrollHeight%3B%20%7D%3B%0A%0A%20%20const%20colors%20%3D%20%7B%20log%3A%20'%23ddd'%2C%20info%3A%20'%238cf'%2C%20warn%3A%20'%23fc6'%2C%20error%3A%20'%23f66'%2C%20debug%3A%20'%23999'%20%7D%3B%0A%20%20for%20(const%20k%20in%20colors)%20%7B%0A%20%20%20%20const%20orig%20%3D%20console%5Bk%5D%3B%0A%20%20%20%20console%5Bk%5D%20%3D%20function%20(...a)%20%7B%20log(a.map(fmt).join('%20')%2C%20colors%5Bk%5D)%3B%20return%20orig.apply(this%2C%20a)%3B%20%7D%3B%0A%20%20%7D%0A%20%20addEventListener('error'%2C%20e%20%3D%3E%20log(e.message%20%2B%20(e.filename%20%3F%20%60%20(%24%7Be.filename%7D%3A%24%7Be.lineno%7D)%60%20%3A%20'')%2C%20'%23f66'))%3B%0A%20%20addEventListener('unhandledrejection'%2C%20e%20%3D%3E%20log('Unhandled%20rejection%3A%20'%20%2B%20fmt(e.reason)%2C%20'%23f66'))%3B%0A%0A%20%20const%20result%20%3D%20v%20%3D%3E%20%7B%0A%20%20%20%20log(fmt(v))%3B%0A%20%20%20%20if%20(v%20%26%26%20typeof%20v.then%20%3D%3D%3D%20'function')%20v.then(r%20%3D%3E%20log('%E2%87%92%20'%20%2B%20fmt(r))%2C%20e%20%3D%3E%20log('%E2%87%92%20'%20%2B%20fmt(e)%2C%20'%23f66'))%3B%0A%20%20%7D%3B%0A%20%20const%20run%20%3D%20src%20%3D%3E%20%7B%0A%20%20%20%20log('%3E%20'%20%2B%20src%2C%20'%238cf')%3B%0A%20%20%20%20try%20%7B%20return%20result((0%2C%20eval)(src))%3B%20%7D%0A%20%20%20%20catch%20(e)%20%7B%0A%20%20%20%20%20%20if%20(!(e%20instanceof%20EvalError)%20%26%26%20!%2Funsafe-eval%7CContent.Security%7CCSP%7CTrusted%2Fi.test(e.message))%20return%20log(fmt(e)%2C%20'%23f66')%3B%0A%20%20%20%20%7D%0A%20%20%20%20const%20path%20%3D%20src.trim().replace(%2F%3B%24%2F%2C%20'')%3B%0A%20%20%20%20if%20(!%2F%5E%5B%5Cw%24.%5B%5C%5D'%22%5D%2B%24%2F.test(path))%20return%20log(%22This%20page's%20CSP%20blocks%20eval.%20Property%20paths%20still%20work%2C%20e.g.%20%240.style%20or%20location.href%22%2C%20'%23fc6')%3B%0A%20%20%20%20try%20%7B%20result(path.split(%2F%5B.%5B%5C%5D'%22%5D%2B%2F).filter(Boolean).reduce((o%2C%20k)%20%3D%3E%20o%5Bk%5D%2C%20window))%3B%20%7D%0A%20%20%20%20catch%20(e)%20%7B%20log(fmt(e)%2C%20'%23f66')%3B%20%7D%0A%20%20%7D%3B%0A%20%20inp.onkeydown%20%3D%20e%20%3D%3E%20%7B%0A%20%20%20%20if%20(e.key%20%3D%3D%3D%20'Enter'%20%26%26%20inp.value.trim())%20%7B%20run(inp.value)%3B%20inp.value%20%3D%20''%3B%20%7D%0A%20%20%7D%3B%0A%0A%20%20%2F%2F%20---%20elements%20---%0A%20%20const%20els%20%3D%20tab('Elements')%3B%0A%20%20const%20tools%20%3D%20h('div'%2C%20'position%3Asticky%3Btop%3A0%3Bdisplay%3Aflex%3Bflex-wrap%3Awrap%3Bbackground%3A%231e1e1e%3Bborder-bottom%3A1px%20solid%20%23444')%3B%0A%20%20const%20info%20%3D%20h('div')%3B%0A%20%20const%20css%20%3D%20h('input'%2C%20'display%3Ablock%3Bwidth%3A100%25%3Bbox-sizing%3Aborder-box%3Bbackground%3A%23111%3Bcolor%3A%23fff%3Bborder%3A0%3Bborder-bottom%3A1px%20solid%20%23444%3Bpadding%3A8px%3Bfont%3A16px%20ui-monospace%2CMenlo%2Cmonospace%3Boutline%3Anone')%3B%0A%20%20css.placeholder%20%3D%20'add%20css%2C%20e.g.%20color%3Ared'%3B%0A%20%20css.setAttribute('autocapitalize'%2C%20'off')%3B%0A%20%20css.onkeydown%20%3D%20e%20%3D%3E%20%7B%0A%20%20%20%20if%20(e.key%20%3D%3D%3D%20'Enter'%20%26%26%20cur)%20%7B%20cur.style.cssText%20%2B%3D%20'%3B'%20%2B%20css.value%3B%20css.value%20%3D%20''%3B%20select(cur)%3B%20%7D%0A%20%20%7D%3B%0A%20%20els.append(tools%2C%20css%2C%20info)%3B%0A%0A%20%20let%20picking%20%3D%20false%2C%20cur%20%3D%20null%3B%0A%20%20const%20pickBtn%20%3D%20btn('Pick'%2C%20()%20%3D%3E%20%7B%20picking%20%3D%20true%3B%20pickBtn.textContent%20%3D%20'Tap%20an%20element%E2%80%A6'%3B%20%7D%2C%20tools)%3B%0A%20%20for%20(const%20%5Blabel%2C%20prop%5D%20of%20%5B%5B'Parent'%2C%20'parentElement'%5D%2C%20%5B'Child'%2C%20'firstElementChild'%5D%2C%20%5B'Prev'%2C%20'previousElementSibling'%5D%2C%20%5B'Next'%2C%20'nextElementSibling'%5D%5D)%0A%20%20%20%20btn(label%2C%20()%20%3D%3E%20cur%3F.%5Bprop%5D%20%26%26%20select(cur%5Bprop%5D)%2C%20tools)%3B%0A%20%20btn('Log'%2C%20()%20%3D%3E%20cur%20%26%26%20console.log(cur)%2C%20tools)%3B%0A%0A%20%20const%20place%20%3D%20()%20%3D%3E%20%7B%0A%20%20%20%20if%20(!cur%3F.isConnected%20%7C%7C%20host.style.display%20%3D%3D%3D%20'none')%20return%20(hl.style.display%20%3D%20'none')%3B%0A%20%20%20%20const%20r%20%3D%20cur.getBoundingClientRect()%3B%0A%20%20%20%20Object.assign(hl.style%2C%20%7B%20display%3A%20'block'%2C%20left%3A%20r.left%20%2B%20'px'%2C%20top%3A%20r.top%20%2B%20'px'%2C%20width%3A%20r.width%20%2B%20'px'%2C%20height%3A%20r.height%20%2B%20'px'%20%7D)%3B%0A%20%20%7D%3B%0A%20%20addEventListener('scroll'%2C%20place%2C%20true)%3B%0A%20%20addEventListener('resize'%2C%20place)%3B%0A%0A%20%20const%20select%20%3D%20el%20%3D%3E%20%7B%0A%20%20%20%20cur%20%3D%20window.%240%20%3D%20el%3B%0A%20%20%20%20place()%3B%0A%20%20%20%20info.replaceChildren()%3B%0A%20%20%20%20const%20path%20%3D%20%5B%5D%3B%0A%20%20%20%20for%20(let%20e%20%3D%20el%3B%20e%20%26%26%20path.length%20%3C%205%3B%20e%20%3D%20e.parentElement)%20path.unshift(fmt(e))%3B%0A%20%20%20%20row(info%2C%20path.join('%20%E2%80%BA%20')%2C%20'%238cf')%3B%0A%20%20%20%20const%20r%20%3D%20el.getBoundingClientRect()%3B%0A%20%20%20%20row(info%2C%20%60%24%7BMath.round(r.width)%7D%20%C3%97%20%24%7BMath.round(r.height)%7D%20at%20(%24%7BMath.round(r.left)%7D%2C%20%24%7BMath.round(r.top)%7D)%60)%3B%0A%20%20%20%20for%20(const%20a%20of%20el.attributes)%20row(info%2C%20%60%24%7Ba.name%7D%3D%22%24%7Ba.value%7D%22%60%2C%20'%23fc6')%3B%0A%20%20%20%20const%20cs%20%3D%20getComputedStyle(el)%3B%0A%20%20%20%20row(info%2C%20%5B'display'%2C%20'position'%2C%20'box-sizing'%2C%20'width'%2C%20'height'%2C%20'margin'%2C%20'padding'%2C%20'border'%2C%20'color'%2C%20'background-color'%2C%20'font'%2C%20'z-index'%2C%20'overflow'%2C%20'opacity'%5D%0A%20%20%20%20%20%20.map(p%20%3D%3E%20%60%24%7Bp%7D%3A%20%24%7Bcs.getPropertyValue(p)%7D%60).join('%5Cn')%2C%20'%23bbb')%3B%0A%20%20%20%20row(info%2C%20el.outerHTML%2C%20'%23888')%3B%0A%20%20%7D%3B%0A%20%20addEventListener('click'%2C%20e%20%3D%3E%20%7B%0A%20%20%20%20if%20(!picking%20%7C%7C%20e.target%20%3D%3D%3D%20host)%20return%3B%0A%20%20%20%20e.preventDefault()%3B%0A%20%20%20%20e.stopImmediatePropagation()%3B%0A%20%20%20%20picking%20%3D%20false%3B%0A%20%20%20%20pickBtn.textContent%20%3D%20'Pick'%3B%0A%20%20%20%20select(e.target)%3B%0A%20%20%7D%2C%20true)%3B%0A%0A%20%20%2F%2F%20---%20network%20---%0A%20%20const%20net%20%3D%20tab('Network')%3B%0A%20%20const%20req%20%3D%20(method%2C%20url)%20%3D%3E%20%7B%0A%20%20%20%20let%20head%20%3D%20%60%E2%80%A6%20%24%7Bmethod%7D%20%24%7Burl%7D%60%2C%20open%20%3D%20false%3B%0A%20%20%20%20const%20r%20%3D%20row(net%2C%20head%2C%20'%23999')%3B%0A%20%20%20%20const%20t%20%3D%20performance.now()%3B%0A%20%20%20%20r.done%20%3D%20status%20%3D%3E%20%7B%0A%20%20%20%20%20%20head%20%3D%20%60%24%7Bstatus%20%7C%7C%20'ERR'%7D%20%24%7Bmethod%7D%20%24%7Burl%7D%20%20%24%7BMath.round(performance.now()%20-%20t)%7Dms%60%3B%0A%20%20%20%20%20%20r.textContent%20%3D%20clip(head)%3B%0A%20%20%20%20%20%20r.style.color%20%3D%20status%20%26%26%20status%20%3C%20400%20%3F%20'%23ddd'%20%3A%20'%23f66'%3B%0A%20%20%20%20%7D%3B%0A%20%20%20%20r.onclick%20%3D%20()%20%3D%3E%20%7B%20open%20%3D%20!open%3B%20r.textContent%20%3D%20clip(open%20%3F%20head%20%2B%20'%5Cn%5Cn'%20%2B%20(r.body%20%3F%3F%20'(no%20body)')%20%3A%20head)%3B%20%7D%3B%0A%20%20%20%20return%20r%3B%0A%20%20%7D%3B%0A%20%20const%20ofetch%20%3D%20window.fetch%3B%0A%20%20window.fetch%20%3D%20function%20(input%2C%20init)%20%7B%0A%20%20%20%20const%20r%20%3D%20req((init%3F.method%20%7C%7C%20input%3F.method%20%7C%7C%20'GET').toUpperCase()%2C%20String(input%3F.url%20%7C%7C%20input))%3B%0A%20%20%20%20return%20ofetch.apply(this%2C%20arguments).then(res%20%3D%3E%20%7B%0A%20%20%20%20%20%20r.done(res.status)%3B%0A%20%20%20%20%20%20res.clone().text().then(b%20%3D%3E%20(r.body%20%3D%20b)%2C%20()%20%3D%3E%20%7B%7D)%3B%0A%20%20%20%20%20%20return%20res%3B%0A%20%20%20%20%7D%2C%20err%20%3D%3E%20%7B%20r.done(0)%3B%20r.body%20%3D%20String(err)%3B%20throw%20err%3B%20%7D)%3B%0A%20%20%7D%3B%0A%20%20const%20xo%20%3D%20XMLHttpRequest.prototype.open%2C%20xs%20%3D%20XMLHttpRequest.prototype.send%3B%0A%20%20XMLHttpRequest.prototype.open%20%3D%20function%20(m%2C%20u)%20%7B%20this.__uh%20%3D%20%5BString(m).toUpperCase()%2C%20String(u)%5D%3B%20return%20xo.apply(this%2C%20arguments)%3B%20%7D%3B%0A%20%20XMLHttpRequest.prototype.send%20%3D%20function%20()%20%7B%0A%20%20%20%20if%20(this.__uh)%20%7B%0A%20%20%20%20%20%20const%20r%20%3D%20req(...this.__uh)%3B%0A%20%20%20%20%20%20this.addEventListener('loadend'%2C%20()%20%3D%3E%20%7B%0A%20%20%20%20%20%20%20%20r.done(this.status)%3B%0A%20%20%20%20%20%20%20%20r.body%20%3D%20this.responseType%20%3D%3D%3D%20''%20%7C%7C%20this.responseType%20%3D%3D%3D%20'text'%20%3F%20this.responseText%20%3A%20%60%5B%24%7Bthis.responseType%7D%5D%60%3B%0A%20%20%20%20%20%20%7D)%3B%0A%20%20%20%20%7D%0A%20%20%20%20return%20xs.apply(this%2C%20arguments)%3B%0A%20%20%7D%3B%0A%0A%20%20%2F%2F%20---%20storage%20---%0A%20%20const%20st%20%3D%20tab('Storage'%2C%20'block'%2C%20()%20%3D%3E%20%7B%0A%20%20%20%20st.replaceChildren()%3B%0A%20%20%20%20for%20(const%20name%20of%20%5B'localStorage'%2C%20'sessionStorage'%5D)%20%7B%0A%20%20%20%20%20%20row(st%2C%20name%2C%20'%238cf')%3B%0A%20%20%20%20%20%20try%20%7B%0A%20%20%20%20%20%20%20%20const%20s%20%3D%20window%5Bname%5D%3B%0A%20%20%20%20%20%20%20%20for%20(let%20i%20%3D%200%3B%20i%20%3C%20s.length%3B%20i%2B%2B)%20row(st%2C%20s.key(i)%20%2B%20'%20%3D%20'%20%2B%20s.getItem(s.key(i)))%3B%0A%20%20%20%20%20%20%7D%20catch%20(e)%20%7B%20row(st%2C%20String(e)%2C%20'%23f66')%3B%20%7D%0A%20%20%20%20%7D%0A%20%20%20%20row(st%2C%20'cookies'%2C%20'%238cf')%3B%0A%20%20%20%20for%20(const%20c%20of%20document.cookie.split('%3B%20').filter(Boolean))%20row(st%2C%20c)%3B%0A%20%20%7D)%3B%0A%0A%20%20%2F%2F%20---%20mount%20---%0A%20%20const%20toggle%20%3D%20()%20%3D%3E%20%7B%20host.style.display%20%3D%20host.style.display%20%3D%3D%3D%20'none'%20%3F%20''%20%3A%20'none'%3B%20place()%3B%20%7D%3B%0A%20%20btn('%E2%9C%95'%2C%20toggle).style.marginLeft%20%3D%20'auto'%3B%0A%20%20window.__unhooded%20%3D%20%7B%20toggle%20%7D%3B%0A%20%20document.documentElement.append(host)%3B%0A%20%20show('Console')%3B%0A%20%20log('Unhooded%20ready.%20Earlier%20logs%2Frequests%20were%20not%20captured.'%2C%20'%23999')%3B%0A%7D)()%3B%0A";
-  document.getElementById('bm').href = code;
-  document.getElementById('code').value = code;
-  document.getElementById('copy').onclick = async () => {
+  const $ = s => document.querySelector(s);
+
+  const copy = $('#copy');
+  copy.onclick = async () => {
     try { await navigator.clipboard.writeText(code); }
-    catch { const t = document.getElementById('code'); t.select(); document.execCommand('copy'); }
+    catch {
+      const t = $('#code');
+      t.value = code;
+      t.hidden = false;
+      t.select();
+      if (!document.execCommand('copy')) return (copy.textContent = "Couldn't copy. Select the text below and copy it.");
+      t.hidden = true;
+    }
+    copy.textContent = 'Copied ✓';
+    copy.classList.add('ok');
+    setTimeout(() => { copy.textContent = 'Tap here to copy the code'; copy.classList.remove('ok'); }, 2000);
   };
+
+  // Loads unhooded.js straight from this folder, so local edits show up on refresh without rebuilding.
+  $('#try').onclick = () => {
+    if (window.__unhooded) return window.__unhooded.toggle();
+    const s = document.createElement('script');
+    s.src = 'unhooded.js';
+    document.body.append(s);
+  };
+
+  const pick = b => {
+    for (const el of document.querySelectorAll('[data-b]')) el.setAttribute('aria-pressed', el.dataset.b === b);
+    for (const el of document.querySelectorAll('[data-for]')) el.hidden = el.dataset.for !== b;
+  };
+  for (const el of document.querySelectorAll('[data-b]')) el.onclick = () => pick(el.dataset.b);
+  pick(/Android/.test(navigator.userAgent) && /Chrome/.test(navigator.userAgent) ? 'chrome' : 'safari');
 </script>
