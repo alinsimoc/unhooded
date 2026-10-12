@@ -22,6 +22,9 @@ ${src}
   : src;
 
 const bm = 'javascript:' + encodeURIComponent(code);
-const html = readFileSync('index.html', 'utf8').replace(/const code = .*;/, () => `const code = ${JSON.stringify(bm)};`);
+const size = `${Math.round(bm.length / 1000)} KB`;
+const html = readFileSync('index.html', 'utf8')
+  .replace(/const code = .*;/, () => `const code = ${JSON.stringify(bm)};`)
+  .replace(/(<span id="size">)[^<]*/, (_, tag) => tag + size);
 writeFileSync('index.html', html);
-console.log(`bookmarklet: ${bm.length} chars${live ? ` (live: ${live})` : ''}`);
+console.log(`bookmarklet: ${bm.length} chars (${size})${live ? ` (live: ${live})` : ''}`);
