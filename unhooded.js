@@ -11,7 +11,7 @@
     return e;
   };
   // GitHub dark palette: G for surfaces, C for text by log level.
-  const G = { canvas: '#010409', bg: '#0d1117', surface: '#151b23', active: '#212830', line: '#3d444d', fg: '#e6edf3', muted: '#9198a1', blue: '#4493f8', tab: '#f78166' };
+  const G = { canvas: '#010409', bg: '#0d1117', surface: '#151b23', active: '#212830', line: '#3d444d', fg: '#e6edf3', muted: '#9198a1', faint: '#656c76', blue: '#4493f8', tab: '#f78166', green: '#238636', attr: '#79c0ff' };
   const C = { log: G.fg, info: G.blue, warn: '#d29922', error: '#f85149', debug: G.muted };
   const clip = (s, n = 5000) => (s.length > n ? s.slice(0, n) + '…' : s);
   const fmt = v => {
@@ -35,33 +35,60 @@
   const root = host.attachShadow({ mode: 'closed' });
   for (const ev of ['keydown', 'keyup', 'keypress']) host.addEventListener(ev, e => e.stopPropagation());
   const panel = h('div', `position:fixed;left:0;right:0;bottom:0;height:50vh;z-index:2147483647;display:flex;flex-direction:column;background:${G.bg};color:${G.fg};font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;border-top:1px solid ${G.line}`);
-  const hl = h('div', `position:fixed;pointer-events:none;z-index:2147483646;background:rgba(68,147,248,.2);outline:1px solid ${G.blue};display:none`);
+  // Box-model highlight (DevTools colours): nested layers, each a translucent border — margin › border › padding — around the content.
+  const BOX = { margin: '#f6b26b', border: '#ffe599', padding: '#93c47d', content: '#6fa8dc' };
+  const layerCss = 'box-sizing:border-box;border-style:solid;width:100%;height:100%';
+  const hl = h('div', `position:fixed;pointer-events:none;z-index:2147483646;display:none;${layerCss};border-color:${BOX.margin}80`);
+  const hlBorder = h('div', `${layerCss};border-color:${BOX.border}80`);
+  const hlPad = h('div', `${layerCss};border-color:${BOX.padding}80;background:${BOX.content}80;background-clip:content-box`);
+  hl.append(hlBorder);
+  hlBorder.append(hlPad);
   const bar = h('div', `display:flex;flex:none;overflow-x:auto;border-bottom:1px solid ${G.line}`);
   // Drag handle: pointer events cover touch and mouse; touch-action:none stops the page scrolling mid-drag.
-  const grip = h('div', `flex:none;height:18px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;background:${G.surface}`);
+  const grip = h('div', `flex:none;height:18px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;background:${G.surface};border-bottom:1px solid ${G.line}`);
   grip.append(h('div', `width:36px;height:4px;border-radius:2px;background:${G.line}`));
+  // Pin the panel to what's actually on screen (the visual viewport). A page wider than the screen,
+  // or pinch-zoom, grows the layout viewport that position:fixed uses, which would push a plain
+  // bottom panel off-screen. We place it in page px and counter-scale so it stays screen-sized.
+  let panelH = innerHeight / 2; // on-screen px
+  const fit = () => {
+    const v = window.visualViewport;
+    if (!v) return (panel.style.height = panelH + 'px'); // old browsers: plain fixed bottom panel
+    const k = v.scale, h = Math.min(panelH, v.height * k - 20);
+    Object.assign(panel.style, {
+      left: v.offsetLeft + 'px', top: v.offsetTop + v.height - h / k + 'px', right: 'auto', bottom: 'auto',
+      width: v.width * k + 'px', height: h + 'px', transform: `scale(${1 / k})`, transformOrigin: '0 0',
+    });
+  };
+  window.visualViewport?.addEventListener('resize', fit);
+  window.visualViewport?.addEventListener('scroll', fit);
   grip.onpointerdown = e => {
     grip.setPointerCapture(e.pointerId);
-    grip.onpointermove = e => { panel.style.height = Math.min(Math.max(innerHeight - e.clientY, 60), innerHeight - 20) + 'px'; };
+    grip.onpointermove = e => {
+      const v = window.visualViewport, k = v ? v.scale : 1;
+      const bottom = v ? v.offsetTop + v.height : innerHeight;
+      panelH = Math.max((bottom - e.clientY) * k, 60);
+      fit();
+    };
   };
   grip.onpointerup = grip.onpointercancel = () => { grip.onpointermove = null; };
   panel.append(grip, bar);
   root.append(hl, panel);
 
-  const btn = (label, onclick, parent = bar) => {
-    const b = h('button', `background:${G.surface};color:${G.fg};border:0;border-right:1px solid ${G.line};padding:8px 12px;font:inherit;flex:none`, label);
+  const btn = (label, onclick, css = '') => {
+    const b = h('button', `background:${G.surface};color:${G.fg};border:0;border-right:1px solid ${G.line};padding:8px 12px;font:inherit;flex:none;${css}`, label);
     b.onclick = onclick;
-    parent.append(b);
+    bar.append(b);
     return b;
   };
-  const row = (parent, text, color = C.log) => {
+  const row = (parent, text, color = C.log, max) => {
     if (parent.childElementCount >= 500) parent.firstChild.remove(); // cap long sessions
-    const r = h('div', `padding:3px 6px;border-bottom:1px solid ${G.surface};white-space:pre-wrap;word-break:break-all;color:${color}`, clip(text));
+    const r = h('div', `padding:6px 10px;border-bottom:1px solid ${G.active};white-space:pre-wrap;overflow-wrap:anywhere;color:${color}`, clip(text, max));
     parent.append(r);
     return r;
   };
-  const field = (placeholder, css) => {
-    const f = h('input', `flex:none;background:${G.canvas};color:${G.fg};border:0;padding:8px;font:inherit;font-size:16px;outline:none;${css}`);
+  const field = (placeholder, css, tag = 'input') => {
+    const f = h(tag, `flex:none;background:${G.canvas};color:${G.fg};border:0;padding:10px;font:inherit;font-size:16px;outline:none;${css}`);
     f.placeholder = placeholder;
     f.setAttribute('autocapitalize', 'off');
     f.autocomplete = 'off';
@@ -69,6 +96,8 @@
     f.enterKeyHint = 'go';
     return f;
   };
+  // Section heading shared by every tab: small, muted, uppercase.
+  const heading = (parent, text) => parent.append(h('div', `padding:12px 10px 2px;color:${G.muted};font-size:11px;letter-spacing:.06em;text-transform:uppercase`, text));
   const tabs = {};
   const tab = (name, onShow) => {
     const body = h('div', 'flex:1;min-height:0;overflow:auto;flex-direction:column;display:none');
@@ -76,20 +105,50 @@
     tabs[name] = { body, onShow, b: btn(name, () => show(name)) };
     return body;
   };
+  let active = '';
   const show = name => {
+    if (name !== 'Elements') picking = false; // taps on the page work normally outside Elements
+    active = name;
     for (const k in tabs) {
       tabs[k].body.style.display = k === name ? 'flex' : 'none';
       tabs[k].b.style.background = k === name ? G.active : G.surface;
       tabs[k].b.style.boxShadow = k === name ? `inset 0 -2px ${G.tab}` : 'none';
     }
     tabs[name].onShow?.();
+    place(); // the highlight only shows on the Elements tab
+  };
+
+  // Eruda-style editor docked at the bottom of a tab: one line until tapped, then a
+  // multi-line box with Cancel / <action>. Ctrl/⌘+Enter submits; plain Enter adds a new line.
+  const editor = (placeholder, label, onSubmit) => {
+    const box = h('div', `flex:none;border-top:1px solid ${G.line};background:${G.canvas}`);
+    const inp = field(placeholder, 'display:block;width:100%;box-sizing:border-box;height:40px;resize:none;transition:height .15s', 'textarea');
+    const acts = h('div', 'display:none;justify-content:flex-end;gap:8px;padding:0 10px 10px');
+    const expand = on => {
+      inp.style.height = on ? '120px' : '40px';
+      acts.style.display = on ? 'flex' : 'none';
+      if (!on) inp.blur();
+    };
+    const submit = () => {
+      if (inp.value.trim()) onSubmit(inp.value);
+      inp.value = '';
+      expand(false);
+    };
+    for (const [text, bg, onclick] of [['Cancel', G.surface, () => expand(false)], [label, G.green, submit]]) {
+      const b = h('button', `flex:1;max-width:220px;padding:8px 16px;border:1px solid ${G.line};border-radius:6px;background:${bg};color:${G.fg};font:inherit`, text);
+      b.onclick = onclick;
+      acts.append(b);
+    }
+    inp.onfocus = () => expand(true);
+    inp.onkeydown = e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); };
+    box.append(inp, acts);
+    return box;
   };
 
   // --- console ---
   const con = tab('Console');
   const logs = h('div', 'flex:1;min-height:0;overflow:auto');
-  const inp = field('> expression', `border-top:1px solid ${G.line}`);
-  con.append(logs, inp);
+  con.append(logs, editor('> expression', 'Execute', src => run(src)));
   const log = (text, color) => { row(logs, text, color); logs.scrollTop = logs.scrollHeight; };
 
   for (const k in C) {
@@ -116,55 +175,200 @@
     try { result(path.split(/[.[\]'"]+/).filter(Boolean).reduce((o, k) => o[k], window)); }
     catch (e) { log(fmt(e), C.error); }
   };
-  inp.onkeydown = e => {
-    if (e.key === 'Enter' && inp.value.trim()) { run(inp.value); inp.value = ''; }
-  };
 
   // --- elements ---
-  const els = tab('Elements');
-  const tools = h('div', `position:sticky;top:0;display:flex;flex-wrap:wrap;background:${G.bg};border-bottom:1px solid ${G.line}`);
-  const info = h('div');
-  const css = field('add css, e.g. color:red', `border-bottom:1px solid ${G.line}`);
-  css.onkeydown = e => {
-    if (e.key === 'Enter' && cur) { cur.style.cssText += ';' + css.value; css.value = ''; select(cur); }
+  const els = tab('Elements', () => cur || (picking = true)); // nothing selected: go straight into pick mode
+  // Sticky header: the element's path as tappable chips (jump to any ancestor), plus Clear.
+  const tools = h('div', `position:sticky;top:0;z-index:1;display:flex;align-items:center;background:${G.bg};border-bottom:1px solid ${G.line}`);
+  // Horizontally scrolling chip rows fade out on whichever side has more to scroll to.
+  const fade = el => {
+    const l = el.scrollLeft > 1, r = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    el.style.webkitMaskImage = el.style.maskImage =
+      `linear-gradient(to right, ${l ? 'transparent' : '#000'}, #000 24px, #000 calc(100% - 24px), ${r ? 'transparent' : '#000'})`;
   };
-  els.append(tools, css, info);
+  const chipRow = css => {
+    const el = h('div', `display:flex;gap:6px;overflow-x:auto;white-space:nowrap;scrollbar-width:none;${css}`);
+    el.onscroll = () => fade(el);
+    return el;
+  };
+  const crumbs = chipRow('flex:1;min-width:0;padding:8px 10px');
+  const chip = (label, onclick, css = '') => {
+    const b = h('button', `flex:none;padding:6px 10px;border:1px solid ${G.line};border-radius:6px;background:none;color:${C.info};font:inherit;${css}`, label);
+    b.onclick = onclick;
+    return b;
+  };
+  const info = h('div');
+  const elScroll = h('div', 'position:relative;flex:1;min-height:0;overflow:auto');
+  // Styles applied from the editor, per element: prop -> { value, important, on, orig, origImportant }.
+  // orig is the element's own inline value before we touched it, restored when a rule is switched off.
+  const edits = new WeakMap();
+  const setStyle = (el, prop, d) => {
+    if (d.on) el.style.setProperty(prop, d.value, d.important ? 'important' : '');
+    else if (d.orig) el.style.setProperty(prop, d.orig, d.origImportant);
+    else el.style.removeProperty(prop);
+    if (!el.style.length) el.removeAttribute('style'); // don't leave an empty style="" behind
+  };
+  const applyCss = text => {
+    if (!cur) return;
+    const list = edits.get(cur) || new Map();
+    edits.set(cur, list);
+    for (const decl of text.split(';')) {
+      const i = decl.indexOf(':'); // first colon only, so values like url(http://…) survive
+      const prop = decl.slice(0, i).trim().toLowerCase();
+      const raw = decl.slice(i + 1).trim();
+      if (i < 0 || !prop || !raw) continue;
+      const prev = list.get(prop);
+      const d = {
+        value: raw.replace(/\s*!important$/i, ''),
+        important: /!important$/i.test(raw),
+        on: true,
+        orig: prev ? prev.orig : cur.style.getPropertyValue(prop),
+        origImportant: prev ? prev.origImportant : cur.style.getPropertyPriority(prop),
+      };
+      list.set(prop, d);
+      setStyle(cur, prop, d);
+    }
+    select(cur);
+  };
+  const css = editor('add css, e.g. color:red', 'Apply', applyCss);
+  elScroll.append(tools, info);
+  els.append(elScroll, css);
 
   let picking = false, cur = null;
-  const pickBtn = btn('Pick', () => { picking = true; pickBtn.textContent = 'Tap an element…'; }, tools);
-  for (const [label, prop] of [['Parent', 'parentElement'], ['Child', 'firstElementChild'], ['Prev', 'previousElementSibling'], ['Next', 'nextElementSibling']])
-    btn(label, () => cur?.[prop] && select(cur[prop]), tools);
-  btn('Log', () => cur && console.log(cur), tools);
+  // Pick mode is on whenever Elements is open with nothing selected; leaving the tab turns it off.
+
+  // Empty state: nothing selected yet, so picking is the one obvious next step.
+  // Centred in the panel and set in the system UI font, like the website, not the code font.
+  const empty = h('div', 'position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:12px;padding:16px;text-align:center;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif');
+  empty.append(
+    h('div', `font-size:16px;font-weight:600;color:${G.fg}`, 'No element selected'),
+    h('div', `max-width:280px;color:${G.muted}`, 'Tap anything on the page to see its box model, attributes and styles.'),
+  );
+  info.append(empty);
+  tools.append(crumbs, chip('Clear', () => {
+    cur = null;
+    info.replaceChildren(empty);
+    place();
+    syncNav();
+    picking = true;
+  }, `margin-right:10px;color:${G.fg};background:${G.surface}`));
+  // Until something is picked, the empty state's big button is the only control.
+  const syncNav = () => {
+    tools.style.display = cur ? 'flex' : 'none';
+    css.style.display = cur ? '' : 'none';
+  };
+  syncNav();
+
+  // [top, right, bottom, left] for margin-*, border-*-width, padding-*
+  const sides = (cs, prop) => ['top', 'right', 'bottom', 'left'].map(s => parseFloat(cs.getPropertyValue(prop.replace('*', s))) || 0);
+  const boxOf = el => {
+    const cs = getComputedStyle(el);
+    // pos: the top/right/bottom/left offsets, only for positioned (non-static) elements
+    const pos = cs.position === 'static' ? null : ['top', 'right', 'bottom', 'left'].map(s => cs.getPropertyValue(s));
+    return { r: el.getBoundingClientRect(), m: sides(cs, 'margin-*'), b: sides(cs, 'border-*-width'), p: sides(cs, 'padding-*'), pos, type: cs.position };
+  };
+  const widths = a => a.map(v => Math.max(v, 0) + 'px').join(' '); // negative margins can't be drawn
 
   const place = () => {
-    if (!cur?.isConnected || host.style.display === 'none') return (hl.style.display = 'none');
-    const r = cur.getBoundingClientRect();
-    Object.assign(hl.style, { display: 'block', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+    if (!cur?.isConnected || host.style.display === 'none' || active !== 'Elements') return (hl.style.display = 'none');
+    const { r, m, b, p } = boxOf(cur);
+    const [mt, mr, mb, ml] = m.map(v => Math.max(v, 0));
+    Object.assign(hl.style, { display: 'block', left: r.left - ml + 'px', top: r.top - mt + 'px', width: r.width + ml + mr + 'px', height: r.height + mt + mb + 'px', borderWidth: widths(m) });
+    hlBorder.style.borderWidth = widths(b);
+    hlPad.style.borderWidth = widths(p);
+  };
+
+  // DevTools-style box-model diagram: margin › border › padding › content, with each side's value.
+  const n2 = v => +v.toFixed(2);
+  const num = v => (typeof v === 'string' ? (v === 'auto' ? '–' : n2(parseFloat(v))) : v ? n2(v) : '–'); // numbers, or raw CSS like '12px' / 'auto'
+  const layer = (name, color, [t, rt, bt, l], inner) => {
+    const d = h('div', `position:relative;border:1px dashed ${color};padding:2px;text-align:center`);
+    const mid = h('div', 'display:flex;align-items:center');
+    inner.style.flex = '1';
+    mid.append(h('span', 'min-width:26px', num(l)), inner, h('span', 'min-width:26px', num(rt)));
+    d.append(h('div', `position:absolute;left:4px;top:1px;font-size:10px;color:${color}`, name), h('div', '', num(t)), mid, h('div', '', num(bt)));
+    return d;
+  };
+  const diagram = ({ r, m, b, p, pos, type }) => {
+    const cw = r.width - b[1] - b[3] - p[1] - p[3], ch = r.height - b[0] - b[2] - p[0] - p[2];
+    const content = h('div', `padding:8px 2px;border:1px solid ${BOX.content};background:${BOX.content}26;white-space:nowrap`, `${n2(cw)} × ${n2(ch)}`);
+    const wrap = h('div', `padding:10px;border-bottom:1px solid ${G.active}`);
+    const box = layer('margin', BOX.margin, m, layer('border', BOX.border, b, layer('padding', BOX.padding, p, content)));
+    wrap.append(pos ? layer(`position: ${type}`, G.muted, pos, box) : box); // DevTools' outer position layer
+    return wrap;
   };
   addEventListener('scroll', place, true);
   addEventListener('resize', place);
 
   const select = el => {
+    const keep = el === cur ? elScroll.scrollTop : 0; // re-rendering the same element keeps your place
     cur = window.$0 = el;
     place();
     info.replaceChildren();
-    const path = [];
-    for (let e = el; e && path.length < 5; e = e.parentElement) path.unshift(fmt(e));
-    row(info, path.join(' › '), C.info);
-    const r = el.getBoundingClientRect();
-    row(info, `${Math.round(r.width)} × ${Math.round(r.height)} at (${Math.round(r.left)}, ${Math.round(r.top)})`);
-    for (const a of el.attributes) row(info, `${a.name}="${a.value}"`, C.warn);
+    crumbs.replaceChildren();
+    for (let e = el; e; e = e.parentElement) crumbs.prepend(chip(clip(fmt(e), 40), () => select(e), e === el ? `background:${G.active};color:${G.fg}` : ''));
+    // Every section gets the same muted title.
+    const title = text => heading(info, text);
+    // Children right under the breadcrumb, as the same chips: up and down the tree sit together.
+    const kids = [...el.children].filter(c => c !== host);
+    if (kids.length) {
+      title(`Children (${kids.length})`);
+      const row = chipRow(`padding:4px 10px 10px;border-bottom:1px solid ${G.active}`);
+      for (const c of kids.slice(0, 50)) row.append(chip(clip(fmt(c), 40), () => select(c)));
+      if (kids.length > 50) row.append(h('span', `flex:none;align-self:center;color:${G.muted}`, `+${kids.length - 50} more`));
+      info.append(row);
+      fade(row);
+    }
+    title('Box model');
+    info.append(diagram(boxOf(el)));
+    const list = edits.get(el);
+    if (list?.size) {
+      title('Applied styles');
+      const sec = h('div', `padding:2px 10px 8px;border-bottom:1px solid ${G.active}`);
+      for (const [prop, d] of list) {
+        const lab = h('label', 'display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer');
+        const box = h('input', `accent-color:${G.green};width:18px;height:18px;margin:0;flex:none`);
+        box.type = 'checkbox';
+        box.checked = d.on;
+        box.onchange = () => {
+          d.on = box.checked;
+          setStyle(el, prop, d);
+          select(el);
+        };
+        const ok = CSS.supports(prop, d.value);
+        const del = h('button', `margin-left:auto;padding:2px 8px;border:0;background:none;color:${G.muted};font:inherit;font-size:16px;line-height:1`, '×');
+        del.setAttribute('aria-label', `Remove ${prop}`);
+        del.onclick = e => {
+          e.preventDefault(); // don't let the label toggle the checkbox
+          setStyle(el, prop, { ...d, on: false }); // restores the element's own value, if any
+          list.delete(prop);
+          select(el);
+        };
+        lab.append(box, h('span', `color:${ok ? C.log : C.error};${d.on ? '' : 'opacity:.45;text-decoration:line-through'}`, `${prop}: ${d.value}${d.important ? ' !important' : ''}`), del);
+        sec.append(lab);
+      }
+      info.append(sec);
+    }
+    // The style attribute is redundant next to Applied styles, so it's only listed when there are none.
+    const attrs = [...el.attributes].filter(a => a.name !== 'style' || !list?.size);
+    if (attrs.length) title('Attributes');
+    for (const a of attrs) row(info, `${a.name}="${a.value}"`, G.attr);
     const cs = getComputedStyle(el);
+    title('Computed styles');
     row(info, ['display', 'position', 'box-sizing', 'width', 'height', 'margin', 'padding', 'border', 'color', 'background-color', 'font', 'z-index', 'overflow', 'opacity']
       .map(p => `${p}: ${cs.getPropertyValue(p)}`).join('\n'), '#c9d1d9');
-    row(info, el.outerHTML, G.muted);
+    title('HTML');
+    row(info, el.outerHTML, G.muted, Infinity); // full markup, never clipped
+    syncNav();
+    crumbs.scrollLeft = crumbs.scrollWidth; // keep the current element's chip in view
+    fade(crumbs);
+    elScroll.scrollTop = keep;
   };
   addEventListener('click', e => {
     if (!picking || e.target === host) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     picking = false;
-    pickBtn.textContent = 'Pick';
     select(e.target);
   }, true);
 
@@ -210,21 +414,31 @@
   const st = tab('Storage', () => {
     st.replaceChildren();
     for (const name of ['localStorage', 'sessionStorage']) {
-      row(st, name, C.info);
+      heading(st, name);
       try {
         const s = window[name];
         for (let i = 0; i < s.length; i++) row(st, s.key(i) + ' = ' + s.getItem(s.key(i)));
+        if (!s.length) row(st, 'empty', G.faint); // keeps the divider between sections
       } catch (e) { row(st, String(e), C.error); }
     }
-    row(st, 'cookies', C.info);
-    for (const c of document.cookie.split('; ').filter(Boolean)) row(st, c);
+    heading(st, 'cookies');
+    const cookies = document.cookie.split('; ').filter(Boolean);
+    for (const c of cookies) row(st, c);
+    if (!cookies.length) row(st, 'empty', G.faint);
   });
 
   // --- mount ---
-  const toggle = () => { host.style.display = host.style.display === 'none' ? '' : 'none'; place(); };
-  btn('✕', toggle).style.marginLeft = 'auto';
+  const toggle = () => {
+    host.style.display = host.style.display === 'none' ? '' : 'none';
+    if (host.style.display === 'none') picking = false;
+    place();
+  };
+  // Blended close button; right inset matches the space above/below the ×.
+  btn('×', toggle, `margin-left:auto;background:none;border-right:0;color:${G.muted};font-size:20px;line-height:1;padding:4px 10px 4px 14px`)
+    .setAttribute('aria-label', 'Close Unhooded');
   window.__unhooded = { toggle };
   document.documentElement.append(host);
+  fit();
   show('Console');
   log('Unhooded ready. Earlier logs/requests were not captured.', C.debug);
 })();
