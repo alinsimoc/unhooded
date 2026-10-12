@@ -11,14 +11,10 @@ Works in Safari and Chrome.
 ## Develop
 
 ```bash
-python3 -m http.server 8080
+npm run dev
 ```
 
-Open http://localhost:8080 and tap **See it live on this page** to run `unhooded.js` straight from the folder. After changing it, rebuild the bookmarklet that the install page hands out:
-
-```bash
-node build.mjs
-```
+Open http://localhost:3000 and tap **See it live on this page** to run `unhooded.js` straight from the folder. Saving any file reloads the page (the panel reopens if it was open), and saving `unhooded.js` also rebuilds the bookmarklet the install page hands out. `npm run build` does a one-off build.
 
 The build minifies `unhooded.js`, encodes it as a `javascript:` URL and writes it, along with its size, into `index.html`. On Netlify it also adds a loader that fetches the latest version, falling back to the embedded copy on sites that block it.
 
