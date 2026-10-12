@@ -1,8 +1,8 @@
-// Unhood: tiny mobile devtools. Built to survive strict CSP / Trusted Types:
+// Unhooded: tiny mobile devtools. Built to survive strict CSP / Trusted Types:
 // no external loads, no innerHTML, styles only via CSSOM (el.style), and
 // console eval falls back to plain property paths when the page blocks eval.
 (() => {
-  if (window.__unhood) return window.__unhood.toggle();
+  if (window.__unhooded) return window.__unhooded.toggle();
 
   const h = (tag, css, text) => {
     const e = document.createElement(tag);
@@ -205,8 +205,8 @@
   // --- mount ---
   const toggle = () => { host.style.display = host.style.display === 'none' ? '' : 'none'; place(); };
   btn('✕', toggle).style.marginLeft = 'auto';
-  window.__unhood = { toggle };
+  window.__unhooded = { toggle };
   document.documentElement.append(host);
   show('Console');
-  log('Unhood ready. Earlier logs/requests were not captured.', '#999');
+  log('Unhooded ready. Earlier logs/requests were not captured.', '#999');
 })();
