@@ -11,7 +11,7 @@
     return e;
   };
   // GitHub dark palette: G for surfaces, C for text by log level.
-  const G = { canvas: '#010409', bg: '#0d1117', surface: '#151b23', active: '#212830', line: '#3d444d', fg: '#e6edf3', muted: '#9198a1', faint: '#656c76', blue: '#4493f8', tab: '#f78166', green: '#238636', attr: '#79c0ff' };
+  const G = { canvas: '#010409', bg: '#0d1117', surface: '#151b23', active: '#212830', line: '#3d444d', fg: '#e6edf3', muted: '#9198a1', text: '#c9d1d9', faint: '#656c76', blue: '#4493f8', tab: '#f78166', green: '#238636', attr: '#79c0ff' };
   const C = { log: G.fg, info: G.blue, warn: '#d29922', error: '#f85149', debug: G.muted };
   const clip = (s, n = 5000) => (s.length > n ? s.slice(0, n) + '…' : s);
   const fmt = v => {
@@ -263,9 +263,7 @@
   const sides = (cs, prop) => ['top', 'right', 'bottom', 'left'].map(s => parseFloat(cs.getPropertyValue(prop.replace('*', s))) || 0);
   const boxOf = el => {
     const cs = getComputedStyle(el);
-    // pos: the top/right/bottom/left offsets, only for positioned (non-static) elements
-    const pos = cs.position === 'static' ? null : ['top', 'right', 'bottom', 'left'].map(s => cs.getPropertyValue(s));
-    return { r: el.getBoundingClientRect(), m: sides(cs, 'margin-*'), b: sides(cs, 'border-*-width'), p: sides(cs, 'padding-*'), pos, type: cs.position };
+    return { cs, r: el.getBoundingClientRect(), m: sides(cs, 'margin-*'), b: sides(cs, 'border-*-width'), p: sides(cs, 'padding-*') };
   };
   const widths = a => a.map(v => Math.max(v, 0) + 'px').join(' '); // negative margins can't be drawn
 
@@ -278,23 +276,64 @@
     hlPad.style.borderWidth = widths(p);
   };
 
-  // DevTools-style box-model diagram: margin › border › padding › content, with each side's value.
-  const n2 = v => +v.toFixed(2);
-  const num = v => (typeof v === 'string' ? (v === 'auto' ? '–' : n2(parseFloat(v))) : v ? n2(v) : '–'); // numbers, or raw CSS like '12px' / 'auto'
-  const layer = (name, color, [t, rt, bt, l], inner) => {
-    const d = h('div', `position:relative;border:1px dashed ${color};padding:2px;text-align:center`);
-    const mid = h('div', 'display:flex;align-items:center');
-    inner.style.flex = '1';
-    mid.append(h('span', 'min-width:26px', num(l)), inner, h('span', 'min-width:26px', num(rt)));
-    d.append(h('div', `position:absolute;left:4px;top:1px;font-size:10px;color:${color}`, name), h('div', '', num(t)), mid, h('div', '', num(bt)));
+  // Box model, radius and colour helpers.
+  const px = v => +parseFloat(v).toFixed(1);
+  const CORNERS = ['top-left', 'top-right', 'bottom-left', 'bottom-right']; // display order: a 2×2 grid
+  // rgb()/rgba() → #rrggbb(aa); other spaces (oklch, color()) are shown as the browser reports them.
+  const hex = c => {
+    const n = c.match(/^rgba?\(([\d.]+),? ([\d.]+),? ([\d.]+)(?:[,/] ?([\d.]+))?\)$/);
+    if (!n) return c;
+    const a = n[4] == null ? 1 : +n[4];
+    return '#' + [n[1], n[2], n[3], ...(a < 1 ? [a * 255] : [])].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+  };
+  const painted = c => c !== 'transparent' && !/[,/]\s*0\)$/.test(c); // fully transparent colours get no swatch
+  const swatch = c => {
+    const e = h('span', 'flex:none;width:10px;height:10px;border-radius:2px;border:1px solid rgba(255,255,255,.25)');
+    e.style.backgroundColor = c;
+    return e;
+  };
+
+  // DevTools-style box-model diagram: each layer is a 3x3 grid, its four values around the next layer in.
+  // A layer on the panel (transparent) uses the panel's greys; layers on a colour fill use dark text.
+  const layer = (name, bg, vals, inner) => {
+    const onPanel = bg === 'transparent';
+    const d = h('div', `position:relative;display:grid;grid-template:auto auto auto/auto minmax(0,1fr) auto;align-items:center;justify-items:center;gap:2px 3px;padding:2px 3px;background:${bg};color:${onPanel ? G.text : G.canvas};border:1px dashed ${onPanel ? G.muted : '#0005'}`);
+    const v = (n, area) => d.append(h('div', `grid-area:${area}`, n ? String(n) : '–'));
+    d.append(h('div', `position:absolute;left:4px;top:2px;font-size:9px;color:${onPanel ? G.muted : G.canvas}`, name));
+    v(vals[0], '1/2'), v(vals[3], '2/1'), v(vals[1], '2/3'), v(vals[2], '3/2');
+    inner.style.cssText += ';grid-area:2/2;justify-self:stretch';
+    d.append(inner);
     return d;
   };
-  const diagram = ({ r, m, b, p, pos, type }) => {
-    const cw = r.width - b[1] - b[3] - p[1] - p[3], ch = r.height - b[0] - b[2] - p[0] - p[2];
-    const content = h('div', `padding:8px 2px;border:1px solid ${BOX.content};background:${BOX.content}26;white-space:nowrap`, `${n2(cw)} × ${n2(ch)}`);
-    const wrap = h('div', `padding:10px;border-bottom:1px solid ${G.active}`);
-    const box = layer('margin', BOX.margin, m, layer('border', BOX.border, b, layer('padding', BOX.padding, p, content)));
-    wrap.append(pos ? layer(`position: ${type}`, G.muted, pos, box) : box); // DevTools' outer position layer
+  const diagram = ({ cs, r, m, b, p }) => {
+    // Content size is what's inside the padding, like DevTools. Fills at 75% so they're not too bright on the dark panel.
+    const cw = px(r.width - b[1] - b[3] - p[1] - p[3]), ch = px(r.height - b[0] - b[2] - p[0] - p[2]);
+    const content = h('div', `padding:4px;background:${BOX.content}bf;border:1px solid #0005`, `${cw} × ${ch}`);
+    const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+    const wrap = h('div', `padding:10px;font-size:11px;border-bottom:1px solid ${G.active}`);
+    // Fills the panel on phones; on wider panels it stops at a readable width, left-aligned.
+    const body = h('div', 'max-width:400px');
+    wrap.append(body);
+    body.append(
+      // Outermost ring: distance from the element's border box to each viewport edge, named after its positioning.
+      layer(cs.position === 'static' ? 'position' : `position: ${cs.position}`, 'transparent', [r.top, vw - r.right, vh - r.bottom, r.left].map(px),
+        layer('margin', BOX.margin + 'bf', m.map(px), layer('border', BOX.border + 'bf', b.map(px), layer('padding', BOX.padding + 'bf', p.map(px), content)))),
+    );
+    // Radius, like Figma: a 2×2 grid laid out like the corners, each value next to an icon of its own
+    // corner (rounded or square), values facing inward.
+    const rad = CORNERS.map(c => cs.getPropertyValue(`border-${c}-radius`).split(' ')[0]); // elliptical corners: horizontal part
+    if (rad.some(v => parseFloat(v))) {
+      const grid = h('div', 'display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;align-items:center;margin-top:10px');
+      CORNERS.forEach((corner, i) => {
+        const [vert, hz] = corner.split('-');
+        const icon = h('span', `flex:none;width:8px;height:8px;box-sizing:border-box;border:0 solid ${G.muted};border-${vert}-width:1.5px;border-${hz}-width:1.5px;border-${corner}-radius:${parseFloat(rad[i]) ? 4 : 0}px`);
+        const value = h('span', `color:${G.text}`, rad[i]);
+        const cell = h('div', `display:flex;align-items:center;gap:6px;white-space:nowrap;justify-self:${hz === 'right' ? 'end' : 'start'}`);
+        cell.append(...(hz === 'right' ? [value, icon] : [icon, value]));
+        grid.append(cell);
+      });
+      body.append(grid);
+    }
     return wrap;
   };
   addEventListener('scroll', place, true);
@@ -320,7 +359,8 @@
       fade(row);
     }
     title('Box model');
-    info.append(diagram(boxOf(el)));
+    const metrics = boxOf(el);
+    info.append(diagram(metrics));
     const list = edits.get(el);
     if (list?.size) {
       title('Applied styles');
@@ -353,10 +393,19 @@
     const attrs = [...el.attributes].filter(a => a.name !== 'style' || !list?.size);
     if (attrs.length) title('Attributes');
     for (const a of attrs) row(info, `${a.name}="${a.value}"`, G.attr);
-    const cs = getComputedStyle(el);
+    const { cs } = metrics;
     title('Computed styles');
-    row(info, ['display', 'position', 'box-sizing', 'width', 'height', 'margin', 'padding', 'border', 'color', 'background-color', 'font', 'z-index', 'overflow', 'opacity']
-      .map(p => `${p}: ${cs.getPropertyValue(p)}`).join('\n'), '#c9d1d9');
+    // Label/value grid; colour properties get a swatch, and rgb values are shown as hex.
+    const swatchOf = { color: cs.color, 'background-color': cs.backgroundColor, border: cs.borderTopColor };
+    const grid = h('div', `display:grid;grid-template-columns:auto 1fr;gap:4px 12px;padding:6px 10px 10px;border-bottom:1px solid ${G.active}`);
+    for (const prop of ['display', 'position', 'box-sizing', 'width', 'height', 'margin', 'padding', 'border', 'color', 'background-color', 'font', 'z-index', 'overflow', 'opacity']) {
+      const v = cs.getPropertyValue(prop), c = swatchOf[prop];
+      const val = h('div', `display:flex;align-items:center;gap:6px;min-width:0;overflow-wrap:anywhere;color:${G.text}`);
+      if (c && painted(c)) val.append(swatch(c));
+      val.append(h('span', '', v.replace(/rgba?\([^)]*\)/g, hex)));
+      grid.append(h('div', `color:${G.muted}`, prop), val);
+    }
+    info.append(grid);
     title('HTML');
     row(info, el.outerHTML, G.muted, Infinity); // full markup, never clipped
     syncNav();
@@ -434,7 +483,7 @@
     place();
   };
   // Blended close button; right inset matches the space above/below the ×.
-  btn('×', toggle, `margin-left:auto;background:none;border-right:0;color:${G.muted};font-size:20px;line-height:1;padding:4px 10px 4px 14px`)
+  btn('×', toggle, `margin-left:auto;position:sticky;right:0;background:${G.bg};border-right:0;color:${G.muted};font-size:20px;line-height:1;padding:4px 10px 4px 14px`)
     .setAttribute('aria-label', 'Close Unhooded');
   window.__unhooded = { toggle };
   document.documentElement.append(host);
