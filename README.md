@@ -18,6 +18,16 @@ Open http://localhost:3000 and tap **See it live on this page** to run `unhooded
 
 The build minifies `unhooded.js`, encodes it as a `javascript:` URL and writes it, along with its size, into `index.html`. On Netlify it also adds a loader that fetches the latest version, falling back to the embedded copy on sites that block it.
 
+## Versioning
+
+The version lives in `package.json` (semver). The build copies it into `unhooded.js`, so the panel's first console line and `window.__unhooded.version` report it. To release:
+
+```bash
+npm version patch --no-git-tag-version && npm run build
+```
+
+Use `minor` or `major` instead of `patch` as needed; drop `--no-git-tag-version` to also get a commit and `vX.Y.Z` tag.
+
 ## License
 
 MIT

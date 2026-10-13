@@ -4,7 +4,14 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
-const src = readFileSync('unhooded.js', 'utf8');
+// package.json is the version source (bump with `npm version patch|minor|major`); copy it into
+// unhooded.js itself so the live file served on Netlify reports the same version as the bookmarklet.
+const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+const vre = /const VERSION = '[^']*';/;
+const orig = readFileSync('unhooded.js', 'utf8');
+if (!vre.test(orig)) throw new Error('unhooded.js: VERSION marker not found');
+const src = orig.replace(vre, `const VERSION = '${version}';`);
+if (src !== orig) writeFileSync('unhooded.js', src);
 const live = process.env.URL && `${process.env.URL}/unhooded.js`;
 const code = live
   ? `(() => {
@@ -35,6 +42,7 @@ const size = `${Math.round(bm.length / 1000)}\u00a0KB`; // non-breaking space ke
 const markers = [
   [/const code =\s*"[^"]*";?/, () => `const code = ${JSON.stringify(bm)};`],
   [/(<span id="size">)[^<]*/, (_, tag) => tag + size],
+  [/(<span id="version">)[^<]*/, (_, tag) => tag + version],
 ];
 let html = readFileSync('index.html', 'utf8');
 for (const [re, fn] of markers) {

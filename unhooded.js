@@ -3,6 +3,7 @@
 // console eval falls back to plain property paths when the page blocks eval.
 (() => {
   if (window.__unhooded) return window.__unhooded.toggle();
+  const VERSION = '1.0.1'; // synced from package.json by build.mjs
 
   const h = (tag, css, text) => {
     const e = document.createElement(tag);
@@ -10,10 +11,12 @@
     if (text != null) e.textContent = text;
     return e;
   };
-  // GitHub dark palette: G for surfaces, C for text by log level.
-  const G = { canvas: '#010409', bg: '#0d1117', surface: '#151b23', active: '#212830', line: '#3d444d', fg: '#e6edf3', muted: '#9198a1', text: '#c9d1d9', faint: '#656c76', blue: '#4493f8', tab: '#f78166', green: '#238636', attr: '#79c0ff' };
+  // Dark palette: G for surfaces, C for text by log level.
+  const G = { canvas: '#010409', bg: '#0d1117', surface: '#151b23', active: '#212830', line: '#3d444d', fg: '#e6edf3', muted: '#9198a1', text: '#c9d1d9', faint: '#656c76', blue: '#4493f8', tab: '#f78166', green: '#238636', ok: '#3fb950', attr: '#79c0ff' };
   const C = { log: G.fg, info: G.blue, warn: '#d29922', error: '#f85149', debug: G.muted };
   const clip = (s, n = 5000) => (s.length > n ? s.slice(0, n) + '…' : s);
+  // Parsed JSON object/array, or undefined for anything else (plain strings, numbers, invalid JSON).
+  const jsonOf = s => { try { const j = JSON.parse(s); if (j && typeof j === 'object') return j; } catch {} };
   const fmt = v => {
     if (typeof v === 'string') return v;
     if (v instanceof Error) return v.stack && v.stack.includes(v.message) ? v.stack : v + '\n' + (v.stack || '');
@@ -118,8 +121,14 @@
     place(); // the highlight only shows on the Elements tab
   };
 
-  // Eruda-style editor docked at the bottom of a tab: one line until tapped, then a
-  // multi-line box with Cancel / <action>. Ctrl/⌘+Enter submits; plain Enter adds a new line.
+  // Full-size action button shared by the editors (console, elements, storage).
+  const actBtn = (text, bg, onclick, css = '') => {
+    const b = h('button', `flex:1;max-width:220px;padding:8px 16px;border:1px solid ${G.line};border-radius:6px;background:${bg};color:${G.fg};font:inherit;${css}`, text);
+    b.onclick = onclick;
+    return b;
+  };
+  // Editor docked at the bottom of a tab: one line until tapped, then a
+  // multi-line box with Cancel / <action>.
   const editor = (placeholder, label, onSubmit) => {
     const box = h('div', `flex:none;border-top:1px solid ${G.line};background:${G.canvas}`);
     const inp = field(placeholder, 'display:block;width:100%;box-sizing:border-box;height:40px;resize:none;transition:height .15s', 'textarea');
@@ -134,13 +143,8 @@
       inp.value = '';
       expand(false);
     };
-    for (const [text, bg, onclick] of [['Cancel', G.surface, () => expand(false)], [label, G.green, submit]]) {
-      const b = h('button', `flex:1;max-width:220px;padding:8px 16px;border:1px solid ${G.line};border-radius:6px;background:${bg};color:${G.fg};font:inherit`, text);
-      b.onclick = onclick;
-      acts.append(b);
-    }
+    acts.append(actBtn('Cancel', G.surface, () => expand(false)), actBtn(label, G.green, submit));
     inp.onfocus = () => expand(true);
-    inp.onkeydown = e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); };
     box.append(inp, acts);
     return box;
   };
@@ -407,7 +411,7 @@
     }
     info.append(grid);
     title('HTML');
-    row(info, el.outerHTML, G.muted, Infinity); // full markup, never clipped
+    row(info, pretty(el), G.muted, Infinity); // full markup, never clipped
     syncNav();
     crumbs.scrollLeft = crumbs.scrollWidth; // keep the current element's chip in view
     fade(crumbs);
@@ -421,18 +425,69 @@
     select(e.target);
   }, true);
 
+  // Re-indents markup by nesting depth, dropping the page's own whitespace between tags.
+  // Elements holding only short text stay on one line; <pre>/<textarea> content is kept verbatim.
+  const VOID = /^(area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)$/;
+  const pretty = (n, pad = '') => {
+    if (n.nodeType === 3) {
+      const t = n.data.replace(/\s+/g, ' ').trim();
+      return t && pad + t;
+    }
+    if (n.nodeType === 8) return pad + `<!--${n.data}-->`;
+    if (n.nodeType !== 1) return '';
+    const tag = n.localName;
+    const open = `<${tag}${[...n.attributes].map(a => ` ${a.name}="${a.value.replace(/"/g, '&quot;')}"`).join('')}>`;
+    if (VOID.test(tag)) return pad + open;
+    if (/^(pre|textarea|script|style)$/.test(tag)) return pad + n.outerHTML.replace(/\s+$/, '');
+    const one = n.childNodes.length === 1 && n.firstChild.nodeType === 3 ? pretty(n.firstChild) : '';
+    if (one && one.length <= 60) return `${pad}${open}${one}</${tag}>`;
+    const kids = [...n.childNodes].map(c => pretty(c, pad + '  ')).filter(Boolean);
+    if (!kids.length) return `${pad}${open}</${tag}>`;
+    return `${pad}${open}\n${kids.join('\n')}\n${pad}</${tag}>`;
+  };
+
   // --- network ---
+  // One row per request: status, method, URL (host dimmed, own-origin paths only), duration on the right.
+  // Tapping expands the full URL and the response body, JSON pretty-printed.
   const net = tab('Network');
+  // Only text-like bodies are shown; anything else (images, binaries, streams) just names its type.
+  const textual = type => /json|text|xml|javascript/.test(type) && !/event-stream/.test(type);
   const req = (method, url) => {
-    let head = `… ${method} ${url}`, open = false;
-    const r = row(net, head, C.debug);
-    const t = performance.now();
-    r.done = status => {
-      head = `${status || 'ERR'} ${method} ${url}  ${Math.round(performance.now() - t)}ms`;
-      r.textContent = clip(head);
-      r.style.color = status && status < 400 ? C.log : C.error;
+    if (net.childElementCount >= 500) net.firstChild.remove(); // cap long sessions
+    const r = h('div', `padding:6px 10px;border-bottom:1px solid ${G.active};cursor:pointer`);
+    const head = h('div', 'display:flex;gap:8px;align-items:baseline');
+    const status = h('span', `flex:none;min-width:3ch;color:${C.debug}`, '…');
+    const u = new URL(url, location.href);
+    const link = h('span', 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:anywhere');
+    if (u.origin !== location.origin) link.append(h('span', `color:${G.faint}`, u.host));
+    link.append(h('span', `color:${G.text}`, u.pathname + u.search + u.hash));
+    const time = h('span', `flex:none;color:${G.faint}`);
+    head.append(status, h('span', `flex:none;color:${G.attr}`, method), link, time);
+    const body = h('div', `display:none;margin-top:6px;white-space:pre-wrap;overflow-wrap:anywhere;color:${G.muted}`, '(no body)');
+    r.append(head, body);
+    net.append(r);
+    let open = false, raw = null; // raw body, formatted on first open (most rows never are)
+    const fill = () => {
+      const json = jsonOf(raw);
+      body.textContent = clip(json ? JSON.stringify(json, null, 2) : raw);
+      raw = null;
     };
-    r.onclick = () => { open = !open; r.textContent = clip(open ? head + '\n\n' + (r.body ?? '(no body)') : head); };
+    r.onclick = () => {
+      open = !open;
+      link.style.whiteSpace = open ? 'normal' : 'nowrap';
+      body.style.display = open ? 'block' : 'none';
+      if (open && raw != null) fill();
+    };
+    const t = performance.now();
+    r.done = code => {
+      status.textContent = code || 'ERR';
+      status.style.color = code && code < 400 ? G.ok : C.error;
+      time.textContent = Math.round(performance.now() - t) + 'ms';
+    };
+    r.setBody = text => {
+      raw = text;
+      if (open) fill();
+    };
     return r;
   };
   const ofetch = window.fetch;
@@ -441,10 +496,10 @@
     return ofetch.apply(this, arguments).then(res => {
       r.done(res.status);
       const type = res.headers.get('content-type') || '';
-      if (/json|text|xml|javascript/.test(type) && !/event-stream/.test(type)) res.clone().text().then(b => (r.body = clip(b)), () => {});
-      else r.body = `[${type || 'unknown type'}]`;
+      if (textual(type)) res.clone().text().then(r.setBody, () => {});
+      else r.setBody(`[${type || 'unknown type'}]`);
       return res;
-    }, err => { r.done(0); r.body = String(err); throw err; });
+    }, err => { r.done(0); r.setBody(String(err)); throw err; });
   };
   const xo = XMLHttpRequest.prototype.open, xs = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (m, u) { this.__uh = [String(m).toUpperCase(), String(u)]; return xo.apply(this, arguments); };
@@ -453,28 +508,76 @@
       const r = req(...this.__uh);
       this.addEventListener('loadend', () => {
         r.done(this.status);
-        r.body = this.responseType === '' || this.responseType === 'text' ? clip(this.responseText) : `[${this.responseType}]`;
+        const type = this.getResponseHeader('content-type') || '';
+        const text = (this.responseType === '' || this.responseType === 'text') && textual(type);
+        r.setBody(text ? this.responseText : `[${this.responseType || type || 'unknown type'}]`);
       });
     }
     return xs.apply(this, arguments);
   };
 
   // --- storage ---
-  const st = tab('Storage', () => {
+  // One storage entry: key on top, value below, clamped to 2 lines. Tapping expands it; JSON values
+  // collapse to a one-line preview and expand pretty-printed. With a store (local/sessionStorage), the
+  // expanded entry can be edited or deleted; cookies stay read-only (their path/domain aren't visible).
+  const entry = (key, value, store) => {
+    const json = jsonOf(value), isObj = !!json;
+    const short = isObj ? JSON.stringify(json) : value, full = isObj ? JSON.stringify(json, null, 2) : value;
+    const r = h('div', `padding:6px 10px;border-bottom:1px solid ${G.active};cursor:pointer`);
+    const v = h('div', `color:${G.text};white-space:pre-wrap;overflow-wrap:anywhere`);
+    const acts = h('div', 'display:none;justify-content:flex-end;gap:8px;margin-top:8px');
+    let open = false;
+    const render = () => {
+      v.textContent = (isObj ? (open ? '▾ ' : '▸ ') : '') + clip(open ? full : short);
+      Object.assign(v.style, open ? { display: 'block' } : { display: '-webkit-box', webkitBoxOrient: 'vertical', webkitLineClamp: '2', overflow: 'hidden' });
+      acts.style.display = open && store ? 'flex' : 'none';
+    };
+    r.onclick = e => { if (!e.target.closest('button')) { open = !open; render(); } }; // buttons don't toggle
+    const edit = () => {
+      const ta = field('', `display:block;width:100%;box-sizing:border-box;min-height:96px;margin-top:6px;resize:vertical;border:1px solid ${G.line};border-radius:6px;padding:8px`, 'textarea');
+      ta.value = full;
+      r.onclick = null; // while editing, taps anywhere in the entry (gaps, key) must not collapse it
+      const err = h('div', `color:${C.error};margin-top:4px`);
+      const save = () => {
+        try {
+          store.setItem(key, isObj ? JSON.stringify(JSON.parse(ta.value)) : ta.value); // JSON stays JSON, saved compact
+          renderStorage();
+        } catch (e) { err.textContent = isObj ? 'Invalid JSON, not saved.' : String(e); }
+      };
+      acts.replaceChildren(actBtn('Cancel', G.surface, renderStorage), actBtn('Save', G.green, save));
+      // One editor at a time: lock every other entry's Edit/Delete until Cancel/Save re-renders the list.
+      for (const b of st.querySelectorAll('button')) if (!acts.contains(b)) { b.disabled = true; b.style.opacity = '.4'; }
+      v.replaceWith(ta);
+      acts.before(err);
+      ta.focus();
+    };
+    if (store) acts.append(actBtn('Delete', G.surface, () => { if (confirm(`Delete "${key}"?`)) { store.removeItem(key); renderStorage(); } }, `color:${C.error}`), actBtn('Edit', G.surface, edit));
+    render();
+    r.append(h('div', `color:${G.attr}`, key), v, acts);
+    st.append(r);
+  };
+
+  const renderStorage = () => {
     st.replaceChildren();
     for (const name of ['localStorage', 'sessionStorage']) {
       heading(st, name);
       try {
         const s = window[name];
-        for (let i = 0; i < s.length; i++) row(st, s.key(i) + ' = ' + s.getItem(s.key(i)));
+        for (let i = 0; i < s.length; i++) entry(s.key(i), s.getItem(s.key(i)), s);
         if (!s.length) row(st, 'empty', G.faint); // keeps the divider between sections
       } catch (e) { row(st, String(e), C.error); }
     }
-    heading(st, 'cookies');
+    heading(st, 'cookies (read-only)');
     const cookies = document.cookie.split('; ').filter(Boolean);
-    for (const c of cookies) row(st, c);
+    for (const c of cookies) {
+      const i = c.indexOf('=');
+      let value = c.slice(i + 1);
+      try { value = decodeURIComponent(value); } catch {} // leave malformed escapes as they are
+      entry(c.slice(0, i), value);
+    }
     if (!cookies.length) row(st, 'empty', G.faint);
-  });
+  };
+  const st = tab('Storage', renderStorage);
 
   // --- mount ---
   const toggle = () => {
@@ -485,9 +588,9 @@
   // Blended close button; right inset matches the space above/below the ×.
   btn('×', toggle, `margin-left:auto;position:sticky;right:0;background:${G.bg};border-right:0;color:${G.muted};font-size:20px;line-height:1;padding:4px 10px 4px 14px`)
     .setAttribute('aria-label', 'Close Unhooded');
-  window.__unhooded = { toggle };
+  window.__unhooded = { toggle, version: VERSION };
   document.documentElement.append(host);
   fit();
   show('Console');
-  log('Unhooded ready. Earlier logs/requests were not captured.', C.debug);
+  log(`Unhooded v${VERSION} ready. Earlier logs/requests were not captured.`, C.debug);
 })();
